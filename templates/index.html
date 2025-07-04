@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SSH Key Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        function showPopup(title, message) {
+            document.getElementById('popup-title').innerText = title;
+            // Handle multi-line messages
+            const messageElement = document.getElementById('popup-message');
+            messageElement.innerHTML = message.replace(/\n/g, '<br>');
+            document.getElementById('popup').classList.remove('hidden');
+            document.getElementById('popup').classList.add('animate-fadeIn');
+        }
+        function closePopup() {
+            document.getElementById('popup').classList.add('hidden');
+            document.getElementById('popup').classList.remove('animate-fadeIn');
+        }
+        
+        async function showSSHKey(alias) {
+            try {
+                const response = await fetch(`/show/${alias}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    document.getElementById('ssh-modal-title').innerText = `SSH Public Key: ${data.alias}`;
+                    document.getElementById('ssh-key-content').value = data.key_content;
+                    document.getElementById('ssh-modal').classList.remove('hidden');
+                    document.getElementById('ssh-modal').classList.add('animate-fadeIn');
+                } else {
+                    showPopup('Error', data.error || 'Gagal memuat SSH key');
+                }
+            } catch (error) {
+                showPopup('Error', 'Terjadi kesalahan saat memuat SSH key');
+            }
+        }
+        
+        function closeSSHModal() {
+            document.getElementById('ssh-modal').classList.add('hidden');
+            document.getElementById('ssh-modal').classList.remove('animate-fadeIn');
+        }
+        
+        function copySSHKey() {
+             const keyContent = document.getElementById('ssh-key-content');
+             keyContent.select();
+             keyContent.setSelectionRange(0, 99999);
+             navigator.clipboard.writeText(keyContent.value).then(() => {
+                 showPopup('Success', 'SSH key berhasil disalin ke clipboard!');
+                 closeSSHModal();
+             }).catch(() => {
+                 showPopup('Error', 'Gagal menyalin SSH key');
+             });
+         }
+         
+         function updateFolderName() {
+              const repoUrl = document.getElementById('repo_url').value;
+              const cloneDirInput = document.getElementById('clone_dir');
+              
+              if (repoUrl && !cloneDirInput.value) {
+                  // Extract repository name from URL
+                  const repoName = repoUrl.split('/').pop().replace('.git', '');
+                  cloneDirInput.placeholder = `Will create: ${repoName}`;
+              } else if (!repoUrl) {
+                  cloneDirInput.placeholder = 'Auto-generated from repo name';
+              }
+          }
+          
+          function setTargetFolder(value) {
+               const targetFolderInput = document.getElementById('target_folder');
+               if (value === 'Desktop') {
+                   // Set to common desktop path
+                   targetFolderInput.value = 'C:\\Users\\%USERNAME%\\Desktop';
+               } else if (value) {
+                   targetFolderInput.value = value;
+               }
+               // Reset dropdown
+               event.target.selectedIndex = 0;
+           }
+    </script>
+    <style>
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.9); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        .animate-fadeIn {
+            animation: fadeIn 0.3s ease-out;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-100 min-h-screen p-6">
+    <div class="max-w-4xl mx-auto bg-white p-6 rounded-xl shadow-md">
+        <h1 class="text-2xl font-bold mb-4">🔐 SSH Key Manager</h1>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="mb-4">
+            {% for category, message in messages %}
+            <script>
+                window.onload = function () {
+                    showPopup("{{ category|capitalize }}", `{{ message }}`);
+                }
+            </script>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+
+        <form method="POST" class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <input type="text" name="alias" placeholder="Alias (e.g. github)" required class="p-2 border rounded">
+            <input type="text" name="hostname" placeholder="Hostname (e.g. github.com)" required
+                class="p-2 border rounded">
+            <input type="text" name="user" placeholder="User (e.g. git)" required class="p-2 border rounded">
+            <button type="submit"
+                class="col-span-1 md:col-span-3 bg-blue-600 text-white p-2 rounded hover:bg-blue-700">Generate
+                Key</button>
+        </form>
+
+        <h2 class="text-xl font-semibold mb-2">🗂️ SSH Keys</h2>
+        <ul class="space-y-2">
+            {% for key in keys %}
+            <li class="bg-gray-50 p-3 rounded border flex flex-col md:flex-row md:items-center justify-between">
+                <span class="font-mono">{{ key }}</span>
+                <div class="flex flex-wrap gap-2 mt-2 md:mt-0">
+                    <button onclick="showSSHKey('{{ key }}')"
+                        class="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600 transition-colors">Show Key</button>
+                    <a href="{{ url_for('delete', alias=key) }}"
+                        class="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600 transition-colors">Delete</a>
+                    <form method="POST" action="{{ url_for('copy_key') }}" class="flex gap-2">
+                        <input type="hidden" name="alias" value="{{ key }}">
+                        <input name="remote" placeholder="user@host" class="p-1 border rounded" required>
+                        <input name="port" placeholder="22" value="22" class="p-1 border rounded w-16">
+                        <button type="submit"
+                            class="bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700 transition-colors">Copy</button>
+                    </form>
+                </div>
+            </li>
+            {% endfor %}
+        </ul>
+
+        <h2 class="text-xl font-semibold mt-8 mb-2">📦 Clone Repository</h2>
+        <div class="bg-blue-50 border-l-4 border-blue-400 p-4 mb-4">
+            <div class="flex">
+                <div class="flex-shrink-0">
+                    <svg class="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
+                    </svg>
+                </div>
+                <div class="ml-3">
+                    <p class="text-sm text-blue-700">
+                        <strong>Tips:</strong> Pastikan SSH key sudah ditambahkan ke Git provider (GitHub/GitLab) dan gunakan SSH URL format: <code class="bg-blue-100 px-1 rounded">git@github.com:username/repo.git</code>
+                    </p>
+                </div>
+            </div>
+        </div>
+        <form method="POST" action="{{ url_for('clone_repo') }}" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <select name="alias" class="p-2 border rounded" required>
+                <option value="">Pilih SSH Key</option>
+                {% for key in keys %}
+                <option value="{{ key }}">{{ key }}</option>
+                {% endfor %}
+            </select>
+            <input name="repo_url" id="repo_url" placeholder="Git Repo URL (e.g., git@github.com:user/repo.git)" class="p-2 border rounded" required 
+                   onchange="updateFolderName()">
+            <div class="relative">
+                <div class="absolute inset-y-0 left-0 flex items-center">
+                    <select onchange="setTargetFolder(this.value)" class="h-full rounded-l border-r border-gray-300 bg-gray-50 text-sm">
+                        <option value="">Quick</option>
+                        <option value="C:\\Projects">C:\\Projects</option>
+                        <option value="C:\\laragon\\www">C:\\laragon\\www</option>
+                        <option value="D:\\Projects">D:\\Projects</option>
+                        <option value="Desktop">Desktop</option>
+                    </select>
+                </div>
+                <input name="target_folder" id="target_folder" placeholder="Target folder (optional, default: current directory)" 
+                       class="p-2 border rounded w-full pl-32" title="Folder tempat menyimpan repository">
+            </div>
+            <input name="clone_dir" id="clone_dir" placeholder="Auto-generated from repo name" 
+                   class="p-2 border rounded text-sm" title="Leave empty to auto-generate folder name">
+            <button type="submit"
+                class="col-span-1 md:col-span-2 bg-purple-600 text-white p-2 rounded hover:bg-purple-700 transition-colors">Clone Repository</button>
+        </form>
+    </div>
+
+    <!-- Popup Modal -->
+    <div id="popup" class="hidden fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+        <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 p-6">
+            <h3 id="popup-title" class="text-lg font-semibold mb-3"></h3>
+            <div id="popup-message" class="mb-4 text-sm leading-relaxed break-all"></div>
+            <div class="text-right">
+                <button onclick="closePopup()"
+                    class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SSH Key Modal -->
+    <div id="ssh-modal" class="hidden fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+        <div class="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h3 id="ssh-modal-title" class="text-lg font-semibold text-gray-800"></h3>
+                <button onclick="closeSSHModal()" class="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
+            </div>
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">SSH Public Key:</label>
+                <textarea id="ssh-key-content" readonly 
+                    class="w-full h-32 p-3 border border-gray-300 rounded-lg bg-gray-50 font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Loading SSH key..."></textarea>
+            </div>
+            <div class="flex justify-end gap-3">
+                <button onclick="closeSSHModal()"
+                    class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 transition-colors">Close</button>
+                <button onclick="copySSHKey()"
+                    class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                    </svg>
+                    Copy Key
+                </button>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>
