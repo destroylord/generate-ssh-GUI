@@ -29,7 +29,7 @@ Sebuah aplikasi web Flask yang memungkinkan Anda untuk mengelola SSH keys dan me
 1. **Clone repository ini**:
    ```bash
    git clone <repository-url>
-   cd ssh-keygen-generate
+   cd generate-ssh-GUI
    ```
 
 2. **Install dependencies**:
