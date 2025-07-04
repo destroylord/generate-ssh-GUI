@@ -69,7 +69,7 @@ Sebuah aplikasi web Flask yang memungkinkan Anda untuk mengelola SSH keys dan me
 ## Struktur File
 
 ```
-ssh-keygen-generate/
+generate-ssh-GUI/
 ├── run.py              # Aplikasi Flask utama
 ├── templates/
 │   └── index.html      # Template HTML
